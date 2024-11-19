@@ -1,0 +1,14 @@
+# Python-related 
+__pycache__/ 
+*.pyc 
+ECHO is on.
+# Data and outputs 
+data/ 
+outputs/ 
+ECHO is on.
+# Environment 
+.env 
+*.env 
+ECHO is on.
+# Jupyter notebooks checkpoints 
+.ipynb_checkpoints/ 
