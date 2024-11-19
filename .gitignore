@@ -1,14 +1,37 @@
-# Python-related 
-__pycache__/ 
-*.pyc 
-ECHO is on.
-# Data and outputs 
-data/ 
-outputs/ 
-ECHO is on.
-# Environment 
-.env 
-*.env 
-ECHO is on.
-# Jupyter notebooks checkpoints 
-.ipynb_checkpoints/ 
+# Python-related files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Data and outputs
+data/
+outputs/
+
+# Virtual environment
+venv/
+
+# Environment files
+.env
+*.env
+
+# Jupyter notebooks checkpoints
+.ipynb_checkpoints/
+
+# IDE-specific files
+.idea/
+
+# Logs
+logs/
+*.log
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+*.swo
+*.orig
