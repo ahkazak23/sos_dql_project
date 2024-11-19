@@ -1,70 +1,91 @@
-import numpy as np
+# game/game_env.py
 
-class SOSGame:
-    def __init__(self, size=5):
-        """Initialize the SOS game with an empty board."""
-        self.size = size  # Board size (default 5x5)
-        self.board = np.full((size, size), " ")  # Empty board
-        self.scores = {"player": 0, "ai": 0}  # Scores for player and AI
-        self.current_player = "player"  # Current player ("player" or "AI")
+import numpy as np
+from config.game_config import BOARD_SIZE
+
+
+class SOSGameEnv:
+    def __init__(self):
+        self.board_size = BOARD_SIZE
+        self.reset()
 
     def reset(self):
-        """Reset the game to the initial state."""
-        self.board = np.full((self.size, self.size), " ")
-        self.scores = {"player": 0, "ai": 0}
-        self.current_player = "player"
-        return self._get_numeric_board()
+        self.board = np.full((self.board_size, self.board_size), '', dtype=str)
+        self.current_player = 'player1'
+        self.scores = {'player1': 0, 'player2': 0}
+        self.game_over = False
+        return self.get_state()
 
-    def _get_numeric_board(self):
-        """Convert the board to a numeric representation."""
-        numeric_board = np.zeros_like(self.board, dtype=np.float32)
-        numeric_board[self.board == "S"] = 1.0  # "S" becomes 1.0
-        numeric_board[self.board == "O"] = -1.0  # "O" becomes -1.0
-        return numeric_board.flatten()  # Flatten to 1D array
+    def get_state(self):
+        state = np.copy(self.board)
+        state[state == ''] = 0
+        state[state == 'S'] = 1
+        state[state == 'O'] = 2
+        return state.astype(np.float32)
 
-    def render(self):
-        """Render the current board to the console."""
-        for row in self.board:
-            print(" | ".join(row))
-            print("-" * (self.size * 4 - 1))
+    def available_actions(self):
+        actions = []
+        for row in range(self.board_size):
+            for col in range(self.board_size):
+                if self.board[row, col] == '':
+                    actions.append((row, col, 'S'))
+                    actions.append((row, col, 'O'))
+        return actions
 
-    def is_valid_move(self, row, col):
-        """Check if a move is valid."""
-        return 0 <= row < self.size and 0 <= col < self.size and self.board[row, col] == " "
-
-    def make_move(self, row, col, letter):
-        """Make a move on the board."""
-        if self.is_valid_move(row, col) and letter in ["S", "O"]:
+    def step(self, action):
+        row, col, letter = action
+        if not self.is_valid_position(row, col) or self.board[row, col] != '':
+            reward = -1  # Penalty for invalid move
+            done = False
+            info = {'invalid_move': True}
+        else:
             self.board[row, col] = letter
-            return self._get_numeric_board()  # Return the updated numeric board
-        return None  # Return None if the move is invalid
-
-    def check_sos(self, row, col):
-        """Check for SOS formations around a specific position."""
-        directions = [
-            [(0, -1), (0, 1)],  # Horizontal
-            [(-1, 0), (1, 0)],  # Vertical
-            [(-1, -1), (1, 1)], # Diagonal top-left to bottom-right
-            [(-1, 1), (1, -1)]  # Diagonal top-right to bottom-left
-        ]
-        score = 0
-        for dir1, dir2 in directions:
-            try:
-                if (
-                    self.get_cell(row + dir1[0], col + dir1[1]) == "S" and
-                    self.get_cell(row + dir2[0], col + dir2[1]) == "S"
-                ):
-                    score += 1
-            except IndexError:
-                continue
-        return score
-
-    def get_cell(self, row, col):
-        """Get the value of a cell, or None if out of bounds."""
-        if 0 <= row < self.size and 0 <= col < self.size:
-            return self.board[row, col]
-        return None
+            points = self.check_sos(row, col, letter)
+            self.scores[self.current_player] += points
+            # Enhanced reward function
+            reward = points * 10  # Increase the reward magnitude
+            if points == 0:
+                reward -= 0.1  # Small penalty for not forming an SOS
+            self.check_game_over()
+            done = self.game_over
+            info = {'invalid_move': False}
+            # Do not switch player if points were scored
+            if points == 0:
+                self.switch_player()
+        return self.get_state(), reward, done, info
 
     def switch_player(self):
-        """Switch the current player."""
-        self.current_player = "ai" if self.current_player == "player" else "player"
+        self.current_player = 'player2' if self.current_player == 'player1' else 'player1'
+
+    def check_sos(self, row, col, letter):
+        points = 0
+        directions = [(-1, -1), (-1, 0), (-1, 1),
+                      (0, -1), (0, 1),
+                      (1, -1), (1, 0), (1, 1)]
+        for dx, dy in directions:
+            if letter == 'S':
+                # Check for 'S' at the start of 'SOS'
+                x1, y1 = row + dx, col + dy
+                x2, y2 = row + 2 * dx, col + 2 * dy
+                if self.is_valid_position(x1, y1) and self.is_valid_position(x2, y2):
+                    if self.board[x1, y1] == 'O' and self.board[x2, y2] == 'S':
+                        points += 1
+            elif letter == 'O':
+                # Check for 'O' in the middle of 'SOS'
+                x1, y1 = row - dx, col - dy
+                x2, y2 = row + dx, col + dy
+                if self.is_valid_position(x1, y1) and self.is_valid_position(x2, y2):
+                    if self.board[x1, y1] == 'S' and self.board[x2, y2] == 'S':
+                        points += 1
+        return points
+
+    def is_valid_position(self, row, col):
+        return 0 <= row < self.board_size and 0 <= col < self.board_size
+
+    def check_game_over(self):
+        if not any(self.board.flatten() == ''):
+            self.game_over = True
+
+    def render(self):
+        print('\n'.join([' '.join(cell or '.' for cell in row) for row in self.board]))
+        print(f"Scores: {self.scores}")

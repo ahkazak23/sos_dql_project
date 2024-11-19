@@ -1,101 +1,149 @@
-import sys
 import os
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
-
 import torch
+import torch.nn as nn
 import torch.optim as optim
-import random
-from game.game_env import SOSGame
-from models.dq_network import DQNetwork
+import numpy as np
+from game.game_env import SOSGameEnv
+from models.dq_network import DQNetworkCNN
 from training.replay_buffer import ReplayBuffer
 from config.game_config import *
 
+import random
+
+
 def train():
-    # Initialize environment, networks, optimizer, and replay buffer
-    env = SOSGame()
-    state_size = env.size * env.size  # 5x5 board flattened
-    action_size = state_size  # 25 possible actions
-    policy_net = DQNetwork(state_size, action_size)
-    target_net = DQNetwork(state_size, action_size)
-    target_net.load_state_dict(policy_net.state_dict())  # Sync target with policy net
+    # Initialize the game environment
+    env = SOSGameEnv()
+
+    # Action space size
+    action_size = env.board_size * env.board_size * 2  # Positions * Letters ('S' or 'O')
+
+    # Initialize the networks
+    policy_net = DQNetworkCNN(action_size)
+    target_net = DQNetworkCNN(action_size)
+    target_net.load_state_dict(policy_net.state_dict())
     target_net.eval()
-    optimizer = optim.Adam(policy_net.parameters(), lr=LR)
-    replay_buffer = ReplayBuffer(BUFFER_SIZE)
 
+    # Optimizer and loss
+    optimizer = optim.Adam(policy_net.parameters(), lr=LEARNING_RATE)
+    criterion = nn.MSELoss()
+
+    # Replay buffer
+    replay_buffer = ReplayBuffer(MEMORY_SIZE)
+
+    # Epsilon-greedy strategy
     epsilon = EPSILON_START
-    all_rewards = []
 
-    for episode in range(MAX_EPISODES):
-        state = env.reset()  # Reset the game
-        state = torch.FloatTensor(state).unsqueeze(0)  # Add batch dimension
+    # Training loop
+    for episode in range(NUM_EPISODES):
+        state = env.reset()  # Reset the environment
         total_reward = 0
-        done = False
 
-        while not done:
-            # Choose action: epsilon-greedy policy
-            if random.random() < epsilon:
-                action = random.randint(0, action_size - 1)
+        for t in range(MAX_STEPS):
+            # Select action using epsilon-greedy strategy
+            if np.random.rand() <= epsilon:
+                action_index = random_action(env)
             else:
+                state_tensor = torch.FloatTensor(state).unsqueeze(0)
                 with torch.no_grad():
-                    q_values = policy_net(state)
-                    action = q_values.argmax().item()
+                    q_values = policy_net(state_tensor)
+                valid_actions = env.available_actions()
+                if valid_actions:
+                    valid_action_indices = [encode_action(a, env.board_size) for a in valid_actions]
+                    q_values_valid = q_values[0, valid_action_indices]
+                    max_q_index = torch.argmax(q_values_valid).item()
+                    action_index = valid_action_indices[max_q_index]
+                else:
+                    break  # No valid actions available
 
-            # Execute action in the environment
-            row, col = divmod(action, env.size)
-            letter = random.choice(["S", "O"])  # Randomly pick "S" or "O"
-            # In train() function, after executing the action:
-            valid_move = env.make_move(row, col, letter)
-
-            if valid_move is None:
-                reward = -1  # Penalty for invalid move
-                done = True
-            else:
-                reward = env.check_sos(row, col)
-                next_state = torch.FloatTensor(valid_move).unsqueeze(0)  # Use valid_move as next_state
-                done = " " not in env.board  # Game ends when board is full
-
-                # Store experience in replay buffer
-                replay_buffer.add((state, action, reward, next_state, done))
-                state = next_state  # Update state
-
+            # Decode action and execute
+            row, col, letter = decode_action(action_index, env.board_size)
+            next_state, reward, done, info = env.step((row, col, letter))
             total_reward += reward
 
-            # Train the network if replay buffer is sufficiently full
+            # Store experience in replay buffer
+            replay_buffer.push(state, action_index, reward, next_state, done)
+            state = next_state
+
+            # Train the network if enough experiences are in the buffer
             if len(replay_buffer) >= BATCH_SIZE:
                 batch = replay_buffer.sample(BATCH_SIZE)
-                states, actions, rewards, next_states, dones = zip(*batch)
-                states = torch.cat(states)
-                next_states = torch.cat(next_states)
-                actions = torch.LongTensor(actions).unsqueeze(1)
-                rewards = torch.FloatTensor(rewards)
-                dones = torch.FloatTensor(dones)
+                train_batch(policy_net, target_net, optimizer, criterion, batch)
 
-                # Compute Q-values
-                q_values = policy_net(states).gather(1, actions).squeeze()
-                with torch.no_grad():
-                    next_q_values = target_net(next_states).max(1)[0]
-                    targets = rewards + GAMMA * next_q_values * (1 - dones)
+            if done:
+                break
 
-                # Update the policy network
-                loss = torch.nn.functional.mse_loss(q_values, targets)
-                optimizer.zero_grad()
-                loss.backward()
-                optimizer.step()
+        # Update epsilon
+        epsilon = max(EPSILON_MIN, epsilon * EPSILON_DECAY)
 
-        # Update target network periodically
-        if episode % TARGET_UPDATE_FREQ == 0:
+        # Update the target network periodically
+        if (episode + 1) % TARGET_UPDATE_FREQ == 0:
             target_net.load_state_dict(policy_net.state_dict())
 
-        # Decay epsilon
-        epsilon = max(EPSILON_END, epsilon * EPSILON_DECAY)
-        all_rewards.append(total_reward)
+        # Logging
+        print(f"Episode {episode + 1}/{NUM_EPISODES}, Total Reward: {total_reward}, Epsilon: {epsilon:.4f}")
 
-        print(f"Episode {episode + 1}/{MAX_EPISODES}, Reward: {total_reward}, Epsilon: {epsilon:.4f}")
+    # Ensure the output directory exists
+    model_dir = 'outputs/models'
+    os.makedirs(model_dir, exist_ok=True)
 
     # Save the trained model
-    torch.save(policy_net.state_dict(), "outputs/models/sos_dqn.pth")
-    print("Training complete. Model saved!")
+    torch.save(policy_net.state_dict(), os.path.join(model_dir, 'sos_dqn.pth'))
+    print("Training completed and model saved!")
 
-if __name__ == "__main__":
+
+def random_action(env):
+    """Select a random valid action from the environment."""
+    actions = env.available_actions()
+    action = random.choice(actions)
+    return encode_action(action, env.board_size)
+
+
+def encode_action(action, board_size):
+    """Encode an action (row, col, letter) into a single index."""
+    row, col, letter = action
+    position = row * board_size + col
+    letter_index = 0 if letter == 'S' else 1
+    return position * 2 + letter_index
+
+
+def decode_action(action_index, board_size):
+    """Decode an action index back into (row, col, letter)."""
+    position = action_index // 2
+    letter_index = action_index % 2
+    row = position // board_size
+    col = position % board_size
+    letter = 'S' if letter_index == 0 else 'O'
+    return row, col, letter
+
+
+def train_batch(policy_net, target_net, optimizer, criterion, batch):
+    """Train the policy network using a batch of experiences."""
+    states, actions, rewards, next_states, dones = zip(*batch)
+
+    # Convert lists of NumPy arrays to tensors
+    states = torch.FloatTensor(np.array(states))
+    actions = torch.LongTensor(actions).unsqueeze(1)
+    rewards = torch.FloatTensor(rewards).unsqueeze(1)
+    next_states = torch.FloatTensor(np.array(next_states))
+    dones = torch.FloatTensor(dones).unsqueeze(1)
+
+    # Compute Q-values for the current states and selected actions
+    q_values = policy_net(states).gather(1, actions)
+
+    # Compute the target Q-values
+    with torch.no_grad():
+        max_next_q_values = target_net(next_states).max(1)[0].unsqueeze(1)
+        target_q_values = rewards + (GAMMA * max_next_q_values * (1 - dones))
+
+    # Compute loss
+    loss = criterion(q_values, target_q_values)
+
+    # Backpropagation and optimization
+    optimizer.zero_grad()
+    loss.backward()
+    optimizer.step()
+
+
+if __name__ == '__main__':
     train()
