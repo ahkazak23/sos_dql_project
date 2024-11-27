@@ -2,17 +2,14 @@ import pygame
 import sys
 import math
 
-# Pygame Ayarları
 pygame.init()
 
-# Renkler
 WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
 RED = (255, 0, 0)
 BLUE = (0, 0, 255)
 GREEN = (0, 255, 0)
 
-# Ekran Ayarları
 WIDTH, HEIGHT = 600, 600
 LINE_WIDTH = 10
 MARKER_WIDTH = 15
@@ -20,29 +17,23 @@ SCREEN = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption("XOX - Minimax ile Yapay Zeka")
 SCREEN.fill(WHITE)
 
-# Tahta
 ROWS, COLS = 3, 3
 CELL_SIZE = WIDTH // COLS
 
-# Tahta Tanımları
 board = [["" for _ in range(COLS)] for _ in range(ROWS)]
 
-# Yazı Tipi
 FONT = pygame.font.Font(None, 80)
 BUTTON_FONT = pygame.font.Font(None, 40)
 
-# Oyuncu ve AI
 PLAYER = "X"
 AI = "O"
 
-# Çizgiler
 def draw_lines():
     for row in range(1, ROWS):
         pygame.draw.line(SCREEN, BLACK, (0, CELL_SIZE * row), (WIDTH, CELL_SIZE * row), LINE_WIDTH)
     for col in range(1, COLS):
         pygame.draw.line(SCREEN, BLACK, (CELL_SIZE * col, 0), (CELL_SIZE * col, HEIGHT), LINE_WIDTH)
 
-# Tahta Çizimi
 def draw_board():
     for row in range(ROWS):
         for col in range(COLS):
@@ -58,7 +49,6 @@ def draw_board():
                                    (col * CELL_SIZE + CELL_SIZE // 2, row * CELL_SIZE + CELL_SIZE // 2),
                                    CELL_SIZE // 3, LINE_WIDTH)
 
-# Tahta Kontrol
 def is_winner(player):
     for row in board:
         if all(cell == player for cell in row):
@@ -73,7 +63,6 @@ def is_winner(player):
 def is_full():
     return all(cell != "" for row in board for cell in row)
 
-# Minimax Algoritması
 def minimax(depth, is_maximizing):
     if is_winner(AI):
         return 1
@@ -103,7 +92,6 @@ def minimax(depth, is_maximizing):
                     best_score = min(best_score, score)
         return best_score
 
-# AI'nin Hamlesi
 def ai_move():
     best_score = -math.inf
     best_move = None
@@ -118,7 +106,7 @@ def ai_move():
                     best_move = (row, col)
     if best_move:
         board[best_move[0]][best_move[1]] = AI
-# Kazananı Ekrana Yazdırma
+        
 def display_winner(winner):
     if winner == "Oyuncu":
         winner_text = FONT.render("Kazandın!", True, BLUE)
@@ -133,10 +121,10 @@ def display_winner(winner):
         winner_rect = pygame.Rect(WIDTH // 2 - winner_text.get_width() // 2 - 20, HEIGHT // 2 - winner_text.get_height() // 2 - 50, winner_text.get_width() + 40, winner_text.get_height() + 20)
         pygame.draw.rect(SCREEN, (169, 169, 169), winner_rect)  # Gri arka plan
 
-    # Yazıyı ekrana yerleştir
+
     SCREEN.blit(winner_text, (WIDTH // 2 - winner_text.get_width() // 2, HEIGHT // 2 - winner_text.get_height() // 2 - 50))
 
-# Tekrar Oyna Butonu
+
 def draw_play_again_button():
     button_text = BUTTON_FONT.render("Tekrar Oyna", True, WHITE)
     button_rect = pygame.Rect(WIDTH // 2 - 100, HEIGHT // 2 + 50, 200, 50)
@@ -144,7 +132,7 @@ def draw_play_again_button():
     SCREEN.blit(button_text, (button_rect.centerx - button_text.get_width() // 2, button_rect.centery - button_text.get_height() // 2))
     return button_rect
 
-# Ana Döngü
+
 def main():
     global board  # Buraya global eklenmeli
     draw_lines()
@@ -174,7 +162,7 @@ def main():
                     else:
                         player_turn = False
 
-            # Tekrar oyna butonuna tıklanması
+            
             if event.type == pygame.MOUSEBUTTONDOWN and winner:
                 mouse_x, mouse_y = event.pos
                 if button_rect and button_rect.collidepoint(mouse_x, mouse_y):
