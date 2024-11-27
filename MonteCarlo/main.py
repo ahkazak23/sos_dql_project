@@ -3,10 +3,10 @@ import copy
 import tkinter as tk
 from concurrent.futures import ThreadPoolExecutor
 
-# Oyun tahtası ve kurallar
+
 BOARD_SIZE = 5
 WINNING_LENGTH = 4
-SIMULATIONS = 300  # Daha optimize bir performans için uygun sayı
+SIMULATIONS = 300 
 
 class GameState:
     def __init__(self):
@@ -24,7 +24,7 @@ class GameState:
         return False
 
     def check_winner(self):
-        # Satır, sütun ve çapraz kontrol
+    
         for row in range(BOARD_SIZE):
             for col in range(BOARD_SIZE):
                 if self.check_line(row, col, 1, 0) or self.check_line(row, col, 0, 1) or \
@@ -51,7 +51,6 @@ class GameState:
         new_state.current_player = self.current_player
         return new_state
 
-# Monte Carlo Simülasyonu
 def simulate_game(state):
     current_state = state.clone()
     depth = 0
@@ -67,14 +66,14 @@ def monte_carlo_tree_search(state):
         return None
     move_scores = {move: 0 for move in moves}
 
-    # Paralel simülasyonlar
+
     with ThreadPoolExecutor(max_workers=4) as executor:
         for move in moves:
             simulations = [executor.submit(simulate_move, state, move) for _ in range(SIMULATIONS)]
             results = [sim.result() for sim in simulations]
             move_scores[move] = sum(results)
 
-    # En iyi skoru al
+
     best_move = max(move_scores, key=move_scores.get)
     return best_move
 
@@ -83,7 +82,6 @@ def simulate_move(state, move):
     simulated_state.make_move(*move)
     return simulate_game(simulated_state)
 
-# GUI
 def play_game():
     root = tk.Tk()
     root.title("5x5 XOX - Monte Carlo Arama Ağacı")
